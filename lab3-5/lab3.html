@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Освещение</title>
+	
+</head>
+
+<body>
+
+	<div class="container">
+		<div class="canvas">
+			<canvas id="canvas" style="border: none;" width="1920" height="1080"></canvas>
+		</div>
+	</div>
+
+</body>
+</html>
+
+<script src="/public/sylvester.js"></script>
+<script type="text/javascript" src="/public/dat.gui.min.js"></script>
+<script src="/public/sylvester.js"></script>
+<script src="/public/glUtils.js"></script>
+<script src="/public/glFunc.js"></script>
+<script src="/public/webgl-utils.js"></script>
+
+<script type="module">
+	import {start} from '/lab3.js'; 
+
+	document.addEventListener('DOMContentLoaded', (event) => {
+        start();
+    });
+
+</script>
+
+<script>document.write('<script src="http://' + (location.host || 'localhost').split(':')[0] + ':35729/livereload.js?snipver=1"></' + 'script>')</script>
+
+<!-- Первая партия (Гуро) -->
+<script id="shader-fs-1" type="x-shader/x-fragment">#version 300 es
+
+	precision mediump float;
+
+	in vec3 vLightWeighting;
+	in vec2 vTextureCoord;
+	in lowp vec4 vColor;
+	in highp float vAttenuation;
+
+	uniform sampler2D u1Sampler;
+	uniform sampler2D u2Sampler;
+	uniform sampler2D u3Sampler;
+
+	uniform int uTextureFlag;
+	uniform float texture_contrib;
+
+	out vec4 fragColor;
+
+	void main(void) {
+	
+	vec4 tex1Color = texture(u1Sampler, vTextureCoord);
+	vec4 tex2Color = texture(u2Sampler, vTextureCoord);
+	vec4 tex3Color = texture(u3Sampler, vTextureCoord);
+
+	fragColor = vec4(vLightWeighting.rgb * vColor.rgb, vColor.a);
+
+	switch (uTextureFlag) {
+	case 1:
+	    //С цветом
+		fragColor = vec4(vLightWeighting.rgb * vColor.rgb * vAttenuation, vColor.a);	    
+		break;
+	case 2:
+	    //С первой текстурой
+		fragColor = vec4(vLightWeighting.rgb * tex1Color.rgb * vAttenuation, tex1Color.a * vColor.a);
+	    break;
+    case 3:
+	    //Со второй текстурой
+		fragColor = vec4(vLightWeighting.rgb * tex2Color.rgb * vAttenuation, tex2Color.a * vColor.a);
+	    break;
+    case 4:
+	    //С первой и второй текстурой
+		fragColor = vec4(vLightWeighting.rgb * mix(tex1Color.rgb,tex2Color.rgb,texture_contrib).rgb * vAttenuation, tex1Color.a * tex2Color.a);
+	    break;
+    case 5:
+    	//С цветом, первой и второй текстурой
+	    fragColor = vec4(vLightWeighting.rgb * mix(tex1Color.rgb,tex2Color.rgb,texture_contrib).rgb * vColor.rgb * vAttenuation, tex1Color.a * tex2Color.a * vColor.a);
+	    break;
+	case 6:
+		// BUMP (след лаба)
+	    fragColor = vec4(vLightWeighting.rgb * tex3Color.rgb * vAttenuation, tex3Color.a * vColor.a);
+	    break;
+	}
+
+} 
+
+</script>
+
+<script id="shader-vs-1" type="x-shader/x-vertex">#version 300 es
+
+	in vec3 aVertexPosition;
+	in vec3 aVertexNormal;
+	in vec4 aVertexColor;
+	in vec2 aTextureCoord;
+
+	uniform mat4 mvMatrix;
+	uniform mat4 prMatrix;
+	uniform mat3 nMatrix;
+
+	uniform vec3 uLightColor;
+	uniform vec3 uLightPosition;
+	uniform vec3 uAmbientLightColor;
+	uniform vec3 uDiffuseLightColor;
+	uniform vec3 uSpecularLightColor;
+
+	uniform float uShininess;
+	uniform float roughness;
+	uniform float intensity;
+	uniform float F0;
+
+	uniform float lin_attenuation;
+	uniform float quad_attenuation;
+
+	uniform int uLightFlag;
+	uniform int uShadingFlag;
+
+	out vec3 vLightWeighting;
+	out lowp vec4 vColor;
+	out highp vec2 vTextureCoord;
+	out highp float vAttenuation;
+
+	float distributionGGX(vec3 normal, vec3 halfVec, float roughness) {
+	    float a = roughness * roughness;
+	    float a2 = a * a;
+	    float NdotH = max(dot(normal, halfVec), 0.0);
+	    float NdotH2 = NdotH * NdotH;
+
+	    float nom = a2;
+	    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+	    denom *= denom;
+
+	    return nom / denom;
+	}
+
+	float fresnelSchlick(float cosTheta, float F0) {
+	    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+	}
+
+	float geometrySmith(vec3 normal, vec3 viewDir, vec3 lightDir, float roughness) {
+	    float NdotV = max(dot(normal, viewDir), 0.0);
+	    float NdotL = max(dot(normal, lightDir), 0.0);
+	    float k = (roughness * roughness) / 2.0;
+
+	    float ggx1 = NdotV / (NdotV * (1.0 - k) + k);
+	    float ggx2 = NdotL / (NdotL * (1.0 - k) + k);
+
+	    return ggx1 * ggx2;
+	}
+
+	vec3 LambertLight(vec3 lightDirection, vec3 normal) {
+		float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
+		return(uAmbientLightColor + uDiffuseLightColor * diffuseLightDot);
+	}
+
+	vec3 FongLight(vec3 lightDirection, vec3 normal, vec3 vertexPositionEye3) {
+		float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
+
+		// Normalize view vector
+		vec3 viewVectorEye = normalize(-vertexPositionEye3);
+
+		// Вычисляем отражения
+		vec3 reflectionVector = reflect(-lightDirection, normal);
+
+		// Вычисляем specular
+		float specularLightDot = max(dot(reflectionVector, viewVectorEye), 0.0);
+		float specularLightParam = pow(specularLightDot, uShininess);
+
+		// (ambient + diffuse + specular)
+		return(uAmbientLightColor + uDiffuseLightColor * diffuseLightDot + uSpecularLightColor * specularLightParam);
+	}
+
+	vec3 ToonLight(vec3 lightDirection, vec3 normal) {
+		float diffuseLightDot = 0.2 + max(dot(normal, lightDirection), 0.0);
+	    vec3  clr;
+
+	    if ( diffuseLightDot < 0.4 )
+	        clr = uDiffuseLightColor * 0.3;
+	    else
+	    if ( diffuseLightDot < 0.7 )
+	        clr = uDiffuseLightColor ;
+	    else
+	        clr = uDiffuseLightColor * 1.3;
+
+	    return(uAmbientLightColor + clr);
+	}
+
+	vec3 BlinnFongLight(vec3 lightDirection, vec3 normal, vec3 vertexPositionEye3) {
+
+		float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
+
+		// Normalize view vector
+		vec3 viewVectorEye = normalize(-vertexPositionEye3);
+
+		vec3 H = normalize(lightDirection + viewVectorEye);
+
+		// Вычисляем specular
+		float specularLightDot = max(dot(H, normal), 0.0);
+		float specularLightParam = pow(specularLightDot, uShininess);
+
+		// (ambient + diffuse + specular)
+		return(uAmbientLightColor + uDiffuseLightColor * diffuseLightDot + uSpecularLightColor * specularLightParam);
+	}
+
+	vec3 CookTorranceLight(vec3 lightDirection, vec3 normal, vec3 vertexPositionEye3) {
+	
+		vec3 viewVectorEye = normalize(-vertexPositionEye3);
+
+	    // Вычисление полувектора
+	    vec3 halfVec = normalize(lightDirection + viewVectorEye);
+
+	    // Вычисление зеркальной составляющей
+	    float NdotH = max(dot(normal, halfVec), 0.0);
+	    float D = distributionGGX(normal, halfVec, roughness);
+	    float F = fresnelSchlick(NdotH, F0);
+	    float G = geometrySmith(normal, viewVectorEye, lightDirection, roughness);
+
+	    vec3 specular = F * G * D / (4.0 * max(dot(normal, viewVectorEye), 0.0001)) * uLightColor * intensity;
+
+	    // Вычисление диффузной составляющей
+	    float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
+	    vec3 diffuse = uDiffuseLightColor * uLightColor * intensity * diffuseLightDot;
+
+	    // Итоговый цвет
+	    return(uAmbientLightColor + diffuse + specular);
+	}
+
+	void main(void) {
+	// Установка позиции наблюдателя сцены
+	vec4 vertexPositionEye4 = mvMatrix * vec4(aVertexPosition, 1.0);
+	vec3 vertexPositionEye3 = vertexPositionEye4.xyz / vertexPositionEye4.w;
+
+	// Вычисление вектора направления света
+	vec3 lightDirection = normalize(uLightPosition - vertexPositionEye3);
+
+	// Вычисление нормали
+	vec3 normal = normalize(nMatrix * aVertexNormal);
+
+	vLightWeighting = vec3(1.0,1.0,1.0);
+
+	float distance = length(uLightPosition - aVertexPosition);
+	float aAttenuation = 1.0 / (1.0 + lin_attenuation * distance + quad_attenuation * distance * distance);
+
+	if (uShadingFlag == 1) {
+		//Ламберт
+		if (uLightFlag == 1) { vLightWeighting = LambertLight(lightDirection, normal); };
+		
+		//Фонг
+		if (uLightFlag == 2) { vLightWeighting = FongLight(lightDirection, normal, vertexPositionEye3); };
+
+		//Тун-Шейдинг
+		if (uLightFlag == 3) { vLightWeighting = ToonLight(lightDirection, normal); };
+
+		//Блинн-Фонг
+		if (uLightFlag == 4) {vLightWeighting = BlinnFongLight(lightDirection, normal, vertexPositionEye3); };
+
+		//Кук-Торренс
+		if (uLightFlag == 5) {vLightWeighting = CookTorranceLight(lightDirection, normal, vertexPositionEye3); };
+	}
+
+	// Трансформируем
+	gl_Position = prMatrix * mvMatrix * vec4(aVertexPosition, 1.0);
+
+	// Передаем в фрагментный
+	vColor = aVertexColor;
+	vTextureCoord = aTextureCoord;
+	vAttenuation = aAttenuation;
+
+}
+
+</script>
+
+<!-- Вторая партия (Фонг) -->
+<script id="shader-fs-2" type="x-shader/x-fragment">#version 300 es
+
+	precision mediump float;
+
+	in vec3 vLightWeighting;
+	in vec2 vTextureCoord;
+	in lowp vec4 vColor;
+	in vec3 vPositionEye3;
+	in highp vec3 vNormal;
+	in highp vec3 vLightDirection;
+	in highp float vAttenuation;
+
+	uniform vec3 uLightColor;
+	uniform vec3 uAmbientLightColor;
+	uniform vec3 uDiffuseLightColor;
+	uniform vec3 uSpecularLightColor;
+
+	uniform float uShininess;
+	uniform float roughness;
+	uniform float intensity;
+	uniform float F0;
+
+	uniform float texture_contrib;
+
+	uniform sampler2D u1Sampler;
+	uniform sampler2D u2Sampler;
+	uniform sampler2D u3Sampler;
+
+	uniform int uTextureFlag;
+	uniform int uShadingFlag;
+	uniform int uLightFlag;
+
+	out vec4 fragColor;
+
+	float BUMPmapping(vec2 vTextureCoord) {
+	    vec2 dx = dFdx(vTextureCoord);
+	    vec2 dy = dFdy(vTextureCoord);
+
+	    float height = texture(u3Sampler, vTextureCoord).r;
+
+	    float xHeightDelta = texture(u3Sampler, vTextureCoord + dx).r - height;
+	    float yHeightDelta = texture(u3Sampler, vTextureCoord + dy).r - height;
+	    return vTextureCoord.x * xHeightDelta + vTextureCoord.y * yHeightDelta;
+	}
+
+	float distributionGGX(vec3 normal, vec3 halfVec, float roughness) {
+	    float a = roughness * roughness;
+	    float a2 = a * a;
+	    float NdotH = max(dot(normal, halfVec), 0.0);
+	    float NdotH2 = NdotH * NdotH;
+
+	    float nom = a2;
+	    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+	    denom *= denom;
+
+	    return nom / denom;
+	}
+
+	float fresnelSchlick(float cosTheta, float F0) {
+	    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+	}
+
+	float geometrySmith(vec3 normal, vec3 viewDir, vec3 lightDir, float roughness) {
+	    float NdotV = max(dot(normal, viewDir), 0.0);
+	    float NdotL = max(dot(normal, lightDir), 0.0);
+	    float k = (roughness * roughness) / 2.0;
+
+	    float ggx1 = NdotV / (NdotV * (1.0 - k) + k);
+	    float ggx2 = NdotL / (NdotL * (1.0 - k) + k);
+
+	    return ggx1 * ggx2;
+	}
+
+	vec3 LambertLight(vec3 lightDirection, vec3 normal) {
+		float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
+		return(uAmbientLightColor + uDiffuseLightColor * diffuseLightDot);
+	}
+
+	vec3 FongLight(vec3 lightDirection, vec3 normal, vec3 vertexPositionEye3) {
+		float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
+
+		// Normalize view vector
+		vec3 viewVectorEye = normalize(-vertexPositionEye3);
+
+		// Вычисляем отражения
+		vec3 reflectionVector = reflect(-lightDirection, normal);
+
+		// Вычисляем specular
+		float specularLightDot = max(dot(reflectionVector, viewVectorEye), 0.0);
+		float specularLightParam = pow(specularLightDot, uShininess);
+
+		// (ambient + diffuse + specular)
+		return(uAmbientLightColor + uDiffuseLightColor * diffuseLightDot + uSpecularLightColor * specularLightParam);
+	}
+
+	vec3 ToonLight(vec3 lightDirection, vec3 normal) {
+		float diffuseLightDot = 0.2 + max(dot(normal, lightDirection), 0.0);
+	    vec3  clr;
+
+	    if ( diffuseLightDot < 0.4 )
+	        clr = uDiffuseLightColor * 0.3;
+	    else
+	    if ( diffuseLightDot < 0.7 )
+	        clr = uDiffuseLightColor ;
+	    else
+	        clr = uDiffuseLightColor * 1.3;
+
+	    return(uAmbientLightColor + clr);
+	}
+
+	vec3 BlinnFongLight(vec3 lightDirection, vec3 normal, vec3 vertexPositionEye3) {
+
+		float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
+
+		// Normalize view vector
+		vec3 viewVectorEye = normalize(-vertexPositionEye3);
+
+		vec3 H = normalize(lightDirection + viewVectorEye);
+
+		// Вычисляем specular
+		float specularLightDot = max(dot(H, normal), 0.0);
+		float specularLightParam = pow(specularLightDot, uShininess);
+
+		// (ambient + diffuse + specular)
+		return(uAmbientLightColor + uDiffuseLightColor * diffuseLightDot + uSpecularLightColor * specularLightParam);
+	}
+
+	vec3 CookTorranceLight(vec3 lightDirection, vec3 normal, vec3 vertexPositionEye3) {
+	
+		vec3 viewVectorEye = normalize(-vertexPositionEye3);
+
+	    // Вычисление полувектора
+	    vec3 halfVec = normalize(lightDirection + viewVectorEye);
+
+	    // Вычисление зеркальной составляющей
+	    float NdotH = max(dot(normal, halfVec), 0.0);
+	    float D = distributionGGX(normal, halfVec, roughness);
+	    float F = fresnelSchlick(NdotH, F0);
+	    float G = geometrySmith(normal, viewVectorEye, lightDirection, roughness);
+
+	    vec3 specular = F * G * D / (4.0 * max(dot(normal, viewVectorEye), 0.0001)) * uLightColor * intensity;
+
+	    // Вычисление диффузной составляющей
+	    float diffuseLightDot = max(dot(normal, lightDirection), 0.0);
+	    vec3 diffuse = uDiffuseLightColor * uLightColor * intensity * diffuseLightDot;
+
+	    // Итоговый цвет
+	    return(uAmbientLightColor + diffuse + specular);
+	}
+	
+	void main(void) {
+
+	vec3 vLightWeighting = vec3(1.0,1.0,1.0);
+
+	vec4 tex1Color = texture(u1Sampler, vTextureCoord);
+	vec4 tex2Color = texture(u2Sampler, vTextureCoord);
+	vec4 tex3Color = texture(u3Sampler, vTextureCoord);
+
+	vec3 newNormal = normalize(vNormal) - BUMPmapping(vTextureCoord) * 0.75;
+
+	if (uShadingFlag == 2) {
+
+		//Ламберт
+		if (uLightFlag == 1) { vLightWeighting = LambertLight(vLightDirection, newNormal); };
+		
+		//Фонг
+		if (uLightFlag == 2) { vLightWeighting = FongLight(vLightDirection, newNormal, vPositionEye3); };
+
+		//Тун-Шейдинг
+		if (uLightFlag == 3) { vLightWeighting = ToonLight(vLightDirection, newNormal); };
+
+		//Блинн-Фонг
+		if (uLightFlag == 4) { vLightWeighting = BlinnFongLight(vLightDirection, newNormal, vPositionEye3); };
+
+		//Кук-Торренс
+		if (uLightFlag == 5) { vLightWeighting = CookTorranceLight(vLightDirection, newNormal, vPositionEye3); }
+	}
+	
+	fragColor = vec4(vLightWeighting.rgb * vColor.rgb, vColor.a);
+
+	switch (uTextureFlag) {
+	case 1:
+	    //С цветом
+		fragColor = vec4(vLightWeighting.rgb * vColor.rgb * vAttenuation, vColor.a);	    
+		break;
+	case 2:
+	    //С первой текстурой
+		fragColor = vec4(vLightWeighting.rgb * tex1Color.rgb * vAttenuation, tex1Color.a * vColor.a);
+	    break;
+    case 3:
+	    //Со второй текстурой
+		fragColor = vec4(vLightWeighting.rgb * tex2Color.rgb * vAttenuation, tex2Color.a * vColor.a);
+	    break;
+    case 4:
+	    //С первой и второй текстурой
+		fragColor = vec4(vLightWeighting.rgb * mix(tex1Color.rgb,tex2Color.rgb,texture_contrib).rgb * vAttenuation, tex1Color.a * tex2Color.a);
+	    break;
+    case 5:
+    	//С цветом, первой и второй текстурой
+	    fragColor = vec4(vLightWeighting.rgb * mix(tex1Color.rgb,tex2Color.rgb,texture_contrib).rgb * vColor.rgb * vAttenuation, tex1Color.a * tex2Color.a * vColor.a);
+	    break;
+	case 6:
+		// BUMP (след лаба)
+	    fragColor = vec4(vLightWeighting.rgb * tex3Color.rgb * vAttenuation, tex3Color.a * vColor.a);
+	    break;
+	}
+
+} 
+
+</script>
+
+<script id="shader-vs-2" type="x-shader/x-vertex">#version 300 es
+
+	in vec3 aVertexPosition;
+	in vec3 aVertexNormal;
+	in vec4 aVertexColor;
+	in vec2 aTextureCoord;
+
+	uniform float lin_attenuation;
+	uniform float quad_attenuation;
+
+	uniform mat4 mvMatrix;
+	uniform mat4 prMatrix;
+	uniform mat3 nMatrix;
+
+	uniform vec3 uLightPosition;
+
+	out lowp vec4 vColor;
+	out highp vec2 vTextureCoord;
+	out highp vec3 vPositionEye3;
+	out highp vec3 vNormal;
+	out highp vec3 vLightDirection;
+	out highp float vAttenuation;
+
+	void main(void) {
+	// Установка позиции наблюдателя сцены
+	vec4 vertexPositionEye4 = mvMatrix * vec4(aVertexPosition, 1.0);
+	vec3 vertexPositionEye3 = vertexPositionEye4.xyz / vertexPositionEye4.w;
+
+	// Вычисление вектора направления света
+	vec3 lightDirection = normalize(uLightPosition - vertexPositionEye3);
+
+	// Вычисление нормали
+	vec3 normal = normalize(nMatrix * aVertexNormal);
+
+	// Трансформируем
+	gl_Position = prMatrix * mvMatrix * vec4(aVertexPosition, 1.0);
+
+	float distance = length(uLightPosition - aVertexPosition);
+	float aAttenuation = 1.0 / (1.0 + lin_attenuation * distance + quad_attenuation * distance * distance);
+
+	// Передаем в фрагментный
+	vColor = aVertexColor;
+	vTextureCoord = aTextureCoord;
+	vLightDirection = lightDirection;
+	vPositionEye3 = vertexPositionEye3;
+	vAttenuation = aAttenuation;
+	vNormal = normal;
+}
+
+</script>
+
+
+<style>
+    body {
+        margin: 0;
+        overflow: hidden; /* Чтобы скрыть полосы прокрутки */
+    }
+    canvas {
+        display: block; /* Убираем отступы между канвасом и краями окна */
+    }
+</style>

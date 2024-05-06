@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Lab2</title>
+</head>
+<body onload="webGLStart();">
+
+	<canvas id="canvas" style="border: none;" width="1500" height="500"></canvas>
+	<div>
+        <label for="xSlider">X-Axis Rotation</label>
+        <input type="range" id="xSlider" min="-360" max="360" value="0" step="15">
+    </div>
+    <div>
+        <label for="ySlider">Y-Axis Rotation</label>
+        <input type="range" id="ySlider" min="-360" max="360" value="0" step="15">
+    </div>
+    <div>
+        <label for="zSlider">Z-Axis Rotation</label>
+        <input type="range" id="zSlider" min="-360" max="360" value="0" step="15">
+    </div>
+    <div>
+        <label for="xOffsetSlider">X-Axis Offset</label>
+        <input type="range" id="xOffsetSlider" min="-2" max="2" value="0" step="0.5">
+    </div>
+    <div>
+        <label for="yOffsetSlider">Y-Axis Offset</label>
+        <input type="range" id="yOffsetSlider" min="-2" max="2" value="0" step="0.5">
+    </div>
+    <div>
+        <label for="zOffsetSlider">Z-Axis Offset</label>
+        <input type="range" id="zOffsetSlider" min="-10" max="10" value="-5" step="1">
+    </div>
+</body>
+</html>
+
+<script type="text/javascript" src="../common/sylvester.js"></script>
+<script type="text/javascript" src="../common/glUtils.js"></script>
+<script type="text/javascript" src="../common/glFunc.js"></script>
+
+<script type="text/javascript" src="lab2.js"></script>
+
+<script>document.write('<script src="http://' + (location.host || 'localhost').split(':')[0] + ':35729/livereload.js?snipver=1"></' + 'script>')</script>
+
+<script id="shader-fs" type="x-shader/x-fragment">
+	precision mediump float;
+	  
+	void main() {
+	  vec2 position = gl_FragCoord.xy;
+	   float stripeWidth = 50.0;
+	   if (fract(position.y / stripeWidth) > 0.5) {
+	     gl_FragColor = vec4(0.8, 0.8, 0, 1);
+	   } else {
+	     gl_FragColor = vec4(0.5, 0.0, 0, 1);
+	   }
+	}
+</script>
+
+<script id="shader-vs" type="x-shader/x-vertex">
+	attribute vec3 aVertexPosition;
+	attribute vec4 aVertexColor;
+	uniform mat4 mvMatrix;
+	uniform mat4 prMatrix;
+	uniform mat4 movMatrix;
+	varying vec4 color;
+
+	void main(void) 
+	{
+		gl_Position = prMatrix * mvMatrix * movMatrix * vec4 ( aVertexPosition, 1.0 );
+		color       = aVertexColor;
+	}
+</script>
+
+<script>
+	
+	var gl;
+
+	var mvMatrix;
+	var prMatrix;
+	var movMatrix;
+	var shaderProgram;
+	var vertexPositionAttribute;
+	var vertexColorAttribute;
+	var positionBuffer;
+	var colorBuffer;
+	var indexBuffer;
+
+	var xRotation = 0;
+	var yRotation = 0;
+	var zRotation = 0;
+
+	var xOffset = 0;
+	var yOffset = 0;
+	var zOffset = -5;
+
+	const xSlider = document.getElementById("xSlider");
+    const ySlider = document.getElementById("ySlider");
+    const zSlider = document.getElementById("zSlider");
+
+    const xOffsetSlider = document.getElementById("xOffsetSlider");
+    const yOffsetSlider = document.getElementById("yOffsetSlider");
+    const zOffsetSlider = document.getElementById("zOffsetSlider");
+
+	xSlider.addEventListener("input", updateRotation);
+	ySlider.addEventListener("input", updateRotation);
+	zSlider.addEventListener("input", updateRotation);
+
+	xOffsetSlider.addEventListener("input", updateOffset);
+	yOffsetSlider.addEventListener("input", updateOffset);
+	zOffsetSlider.addEventListener("input", updateOffset);
+
+    function updateRotation() {
+        xRotation = xSlider.valueAsNumber * Math.PI / 180;
+        yRotation = ySlider.valueAsNumber * Math.PI / 180;
+        zRotation = zSlider.valueAsNumber * Math.PI / 180;
+    }
+
+    function updateOffset() {
+        xOffset = xOffsetSlider.valueAsNumber;
+        yOffset = yOffsetSlider.valueAsNumber;
+        zOffset = zOffsetSlider.valueAsNumber;
+    }
+
+	function webGLStart() 
+	{
+		var canvas = document.getElementById("canvas");
+
+		if ( !canvas ) { alert("Could not initialize canvas") };
+
+		try {
+			gl = canvas.getContext("webgl2");
+			if ( !gl ) { gl = canvas.getContext("experimental-webgl") };
+
+		} catch(e) {}
+
+		if ( !gl ) {alert("Could not initialize WebGL")};
+
+		//Инициализируем шейдеры
+		initShaders();
+
+		gl.enable     ( gl.DEPTH_TEST );
+		gl.depthFunc  ( gl.LEQUAL );	
+
+		//Рисуем сцену
+		setInterval ( drawScene, 15 );
+	}
+
+	function GetVertices(R, x0, y0, n, phi = 0)
+	{
+		var v = [];
+		for (var i = 0; i < n; i++) {
+			v.push([x0 + R * Math.cos(phi + 2 * Math.PI * i / n), y0 + R * Math.sin(phi + 2 * Math.PI * i / n) ]);
+		}
+
+		return v;
+	}
+
+	function drawPenta(position, rotation, size) {
+		const positions = GetVertices(1,0,0,5);
+		const colors = [ [1, 0, 0, 1], [1, 0, 0, 1], [1, 0, 0, 1], [1, 0, 0, 1], [1, 0, 0, 1] ];
+		const indices = [
+		  [0, 1, 4],
+		  [1, 2, 3],
+		  [1, 3, 4], 
+		];
+
+		initBuffers(positions, colors,indices,dim=2);
+
+		movMatrix = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+		
+		perspective( 45, 3, 0.1, 100.0 );
+		loadIdentity();
+		mvTranslate( [position[0], position[1], position[2]] );
+
+		//Выполняем необжохомые повороты
+		rotateX(movMatrix, rotation[0]);
+		rotateY(movMatrix, rotation[1]);
+		rotateZ(movMatrix, rotation[2]);
+
+		var Pmatrix = gl.getUniformLocation(shaderProgram, "prMatrix");
+      	var Vmatrix = gl.getUniformLocation(shaderProgram, "mvMatrix");
+  	    var Mmatrix = gl.getUniformLocation(shaderProgram, "movMatrix");
+
+		gl.uniformMatrix4fv(Pmatrix, false, new Float32Array(prMatrix.flatten()));
+        gl.uniformMatrix4fv(Vmatrix, false, new Float32Array(mvMatrix.flatten()));
+        gl.uniformMatrix4fv(Mmatrix, false, movMatrix);
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+		gl.vertexAttribPointer(vertexPositionAttribute, positionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+		gl.vertexAttribPointer(vertexColorAttribute, colorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+		gl.drawElements(gl.TRIANGLES, indexBuffer.numItems*indexBuffer.itemSize, gl.UNSIGNED_SHORT, 0);
+
+	}
+
+	function drawCube(position, rotation, size) {
+		const positions = [
+		  // Вершины куба
+		  // Передняя грань
+		  [-size, -size,  size], // V0
+		  [size, -size,  size], // V1
+		  [size,  size,  size], // V2
+		  [-size,  size,  size], // V3
+
+		  // Задняя грань
+		  [-size, -size, -size], // V4
+		   [size, -size, -size], // V5
+		  [ size,  size, -size], // V6
+		  [-size,  size, -size]  // V7
+		];
+
+		// Цвета граней куба
+		const colors = [
+		  // Цвета для каждой вершины
+		  // Задняя грань: красный
+		  [1.0, 0.0, 0.0, 1.0], 
+		  [1.0, 0.0, 0.0, 1.0], 
+		  [1.0, 0.0, 0.0, 1.0], 
+		  [1.0, 0.0, 0.0, 1.0],  
+		  [1.0, 0.0, 0.0, 1.0], 
+		  [1.0, 0.0, 0.0, 1.0], 
+		  [1.0, 0.0, 0.0, 1.0], 
+		  [1.0, 0.0, 0.0, 1.0] 
+		];
+
+		// Индексы граней куба
+		const indices = [
+		  [0, 1, 2],  [0, 2, 3],    // Передняя грань
+		  [4, 5, 6],  [4, 6, 7],    // Задняя грань
+		  [0, 3, 7],  [0, 7, 4],    // Левая грань
+		  [1, 2, 6],  [1, 6, 5],    // Правая грань
+		  [0, 1, 5],  [0, 5, 4],    // Нижняя грань
+		  [2, 3, 7],  [2, 7, 6]     // Верхняя грань
+		];
+
+		initBuffers(positions, colors, indices, dim=3)
+
+		movMatrix = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+		
+		perspective ( 45, 3, 0.1, 100.0 );
+		loadIdentity ();
+		mvTranslate ( [position[0], position[1], position[2]] );
+
+		//Выполняем необжохомые повороты
+		rotateX(movMatrix, rotation[0]);
+		rotateY(movMatrix, rotation[1]);
+		rotateZ(movMatrix, rotation[2]);
+
+		var Pmatrix = gl.getUniformLocation(shaderProgram, "prMatrix");
+      	var Vmatrix = gl.getUniformLocation(shaderProgram, "mvMatrix");
+  	    var Mmatrix = gl.getUniformLocation(shaderProgram, "movMatrix");
+
+		gl.uniformMatrix4fv(Pmatrix, false, new Float32Array(prMatrix.flatten()));
+        gl.uniformMatrix4fv(Vmatrix, false, new Float32Array(mvMatrix.flatten()));
+        gl.uniformMatrix4fv(Mmatrix, false, movMatrix);
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+		gl.vertexAttribPointer(vertexPositionAttribute, positionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+		gl.vertexAttribPointer(vertexColorAttribute, colorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+		gl.drawElements(gl.TRIANGLES, indexBuffer.numItems*indexBuffer.itemSize, gl.UNSIGNED_SHORT, 0);
+
+	}
+
+	function drawSquare(position, rotation, size) {
+		const positions = [ [1, 1], [+1, -1], [-1, -1], [-1, 1] ];
+		const colors = [ [0, 0, 1, 1], [0, 0, 1, 1], [0, 0, 1, 1], [0, 0, 1, 1] ];
+		const indices = [
+		  [0, 1, 2],  [0, 2, 3], 
+		];
+
+		initBuffers(positions, colors, indices, dim=2);
+
+		movMatrix = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+		
+		perspective ( 45, 3, 0.1, 100.0 );
+		loadIdentity ();
+		mvTranslate ( [position[0], position[1], position[2]] );
+
+		//Выполняем необжохомые повороты
+		rotateX(movMatrix, rotation[0]);
+		rotateY(movMatrix, rotation[1]);
+		rotateZ(movMatrix, rotation[2]);
+
+		var Pmatrix = gl.getUniformLocation(shaderProgram, "prMatrix");
+      	var Vmatrix = gl.getUniformLocation(shaderProgram, "mvMatrix");
+  	    var Mmatrix = gl.getUniformLocation(shaderProgram, "movMatrix");
+
+		gl.uniformMatrix4fv(Pmatrix, false, new Float32Array(prMatrix.flatten()));
+        gl.uniformMatrix4fv(Vmatrix, false, new Float32Array(mvMatrix.flatten()));
+        gl.uniformMatrix4fv(Mmatrix, false, movMatrix);
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+		gl.vertexAttribPointer(vertexPositionAttribute, positionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+		gl.vertexAttribPointer(vertexColorAttribute, colorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+		gl.drawElements(gl.TRIANGLES, indexBuffer.numItems*indexBuffer.itemSize, gl.UNSIGNED_SHORT, 0);
+	}
+
+	//Отрисовка сцены
+	function drawScene() 	
+	{	
+
+		gl.clearColor(0.0, 0.0, 0.0, 1.0);
+		gl.clearDepth(1.0); 
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+		drawPenta([xOffset, yOffset, zOffset], [xRotation, yRotation, zRotation], 0.5);
+		drawCube([xOffset+2, yOffset, zOffset], [xRotation, yRotation, zRotation], 0.5);
+		drawSquare([xOffset-2, yOffset, zOffset], [xRotation, yRotation, zRotation], 0.5);
+
+		gl.flush();
+	}
+
+</script>
