@@ -48,3 +48,5 @@ export function getSphereElements(radius, latitudeBands, longitudeBands) {
 
     return { positions, normals, colors, indices, texturecoords };
 }
+
+export default getSphereElements;

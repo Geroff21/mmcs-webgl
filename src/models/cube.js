@@ -93,3 +93,5 @@ export function getCubeElements() {
     return {positions, normals, colors, indices, texturecoords}
 
 }
+
+export default getCubeElements;

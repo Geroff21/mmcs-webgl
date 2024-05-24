@@ -1,5 +1,5 @@
-import { getCubeElements } from '/model/cube.js';
-import { getSphereElements } from '/model/sphere.js';
+import { getCubeElements } from '../src/models/cube.js';
+import { getSphereElements } from '../src/models/sphere.js';
 
 var gl;
 const gui = new dat.GUI();
@@ -298,7 +298,7 @@ function drawCube(model, position, rotation, color, texSrc, tex2Src, tex3Src, si
 		};
 
 		for (var ii = 0; ii < imagesToLoad; ++ii) {
-			var image = loadImage('textures/' + srcs[ii], onImageLoad);
+			var image = loadImage('../src/textures/' + srcs[ii], onImageLoad);
 			images[srcs[ii]] = image;
 			
 		}
@@ -537,45 +537,45 @@ function drawCube(model, position, rotation, color, texSrc, tex2Src, tex3Src, si
 
 		perspective ( 45, window.innerWidth / window.innerHeight, 0.1, 100.0 );
 
-		// drawCube(
-		// 	getCubeElements(), //Model
-		// 	[parameters.offset.x-1, parameters.offset.y, parameters.offset.z], //Offset
-		// 	[parameters.rotation.x, parameters.rotation.y, parameters.rotation.z], //Rotations
-		// 	[1.0,0.0,0.0,1.0], //color
-		// 	"stone.png", //texture
-		// 	"stone.png", //texture2
-		// 	"heightMap.png",
-		// 	0.5, //size		
-		// 	raxis // rotation axis
-		// 	);
+		drawCube(
+			getCubeElements(), //Model
+			[parameters.offset.x-1, parameters.offset.y, parameters.offset.z], //Offset
+			[parameters.rotation.x, parameters.rotation.y, parameters.rotation.z], //Rotations
+			[1.0,0.0,0.0,1.0], //color
+			"stone.png", //texture
+			"stone.png", //texture2
+			"bumpMap.jpg",
+			0.5, //size		
+			raxis // rotation axis
+			);
 
-		// drawCube(
-		// 	getCubeElements(), //Model
-		// 	[parameters.offset.x+1, parameters.offset.y, parameters.offset.z], //Offset
-		// 	[parameters.rotation.x, parameters.rotation.y, parameters.rotation.z], //Rotations
-		// 	[0.0,1.0,0.0,1.0], //color
-		// 	"glowstone.png", //texture
-		// 	"stone.png", //texture2
-		// 	"heightMap.png",
-		// 	0.5, //size		
-		// 	raxis // rotation axis
-		// 	);
+		drawCube(
+			getCubeElements(), //Model
+			[parameters.offset.x+1, parameters.offset.y, parameters.offset.z], //Offset
+			[parameters.rotation.x, parameters.rotation.y, parameters.rotation.z], //Rotations
+			[0.0,1.0,0.0,1.0], //color
+			"glowstone.png", //texture
+			"stone.png", //texture2
+			"bumpMap.jpg",
+			0.5, //size		
+			raxis // rotation axis
+			);
 
-		// drawCube(
-		// 	getCubeElements(), //Model
-		// 	[parameters.offset.x, parameters.offset.y, parameters.offset.z], //Offset
-		// 	[parameters.rotation.x, parameters.rotation.y, parameters.rotation.z], //Rotations
-		// 	[0.0,0.0,1.0,1.0], //color
-		// 	"cobblestone.png", //texture
-		// 	"stone.png", //texture2
-		// 	"heightMap.png",
-		// 	0.5, //size		
-		// 	raxis // rotation axis
-		// 	);
-
-		/*drawCube(
+		drawCube(
 			getCubeElements(), //Model
 			[parameters.offset.x, parameters.offset.y, parameters.offset.z], //Offset
+			[parameters.rotation.x, parameters.rotation.y, parameters.rotation.z], //Rotations
+			[0.0,0.0,1.0,1.0], //color
+			"cobblestone.png", //texture
+			"stone.png", //texture2
+			"bumpMap.jpg",
+			0.5, //size		
+			raxis // rotation axis
+			);
+
+		drawCube(
+			getCubeElements(), //Model
+			[parameters.offset.x, parameters.offset.y+1, parameters.offset.z], //Offset
 			[parameters.rotation.x, parameters.rotation.y, parameters.rotation.z], //Rotations
 			[0.5,0.0,1.0,1.0], //color
 			"glowstone.png", //texture
@@ -583,11 +583,11 @@ function drawCube(model, position, rotation, color, texSrc, tex2Src, tex3Src, si
 			"bumpMap.jpg", //texture3
 			0.5, //size		
 			raxis // rotation axis
-			);*/
+			);
 
 		//Пример прозрачного кубика
 
-		drawCube(
+		/*drawCube(
 			models.sphere,
 			[parameters.offset.x, parameters.offset.y, parameters.offset.z], //Offset
 			[parameters.rotation.x, parameters.rotation.y, parameters.rotation.z], //Rotations
@@ -597,7 +597,7 @@ function drawCube(model, position, rotation, color, texSrc, tex2Src, tex3Src, si
 			"orange_ao.jpg", //texture3
 			0.7, //size		
 			raxis
-			);
+			);*/
 
 		gl.flush();
 	}

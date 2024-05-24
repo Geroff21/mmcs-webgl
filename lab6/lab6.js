@@ -1,5 +1,5 @@
-import { getCubeElements } from '/model/cube.js';
-import { getSphereElements } from '/model/sphere.js';
+import { getCubeElements } from '../src/models/cube.js';
+import { getSphereElements } from '../src/models/sphere.js';
 
 var gl;
 const gui = new dat.GUI();
@@ -298,7 +298,7 @@ function drawCube(model, position, rotation, color, texSrc, tex2Src, tex3Src, si
 		};
 
 		for (var ii = 0; ii < imagesToLoad; ++ii) {
-			var image = loadImage('textures/' + srcs[ii], onImageLoad);
+			var image = loadImage('../src/textures/' + srcs[ii], onImageLoad);
 			images[srcs[ii]] = image;
 			
 		}

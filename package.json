@@ -1,0 +1,22 @@
+{
+  "name": "mmcs-webgl",
+  "version": "1.0.0",
+  "description": "labs for mmcs-webgl course",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Geroff21/mmcs-webgl.git"
+  },
+  "author": "Matvey Kostenko",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Geroff21/mmcs-webgl/issues"
+  },
+  "homepage": "https://github.com/Geroff21/mmcs-webgl#readme",
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
