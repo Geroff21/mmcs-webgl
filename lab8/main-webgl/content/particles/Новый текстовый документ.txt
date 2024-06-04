@@ -1,0 +1,224 @@
+import { draw } from "../../systems/meshes-render-core/draw.js";
+import { initBuffers } from "../../systems/meshes-render-core/init-mesh-buffers.js";
+
+class Particle1 {
+    constructor() {
+        this.timeFromSpawn = 0.0;
+        this.spawnInterval = 0.005; // Интервал спавна частиц (в секундах)
+        this.particles = [];
+        this.maxParticles = 200; // Максимальное количество частиц в системе
+        this.spawnRate = 1; // Количество частиц, создаваемых за один раз
+        this.center = [0, -2, -12]; // Центр завихрения (-12)
+        this.rotationSpeed = 10.5; // Скорость вращения частиц
+    }
+
+    async preload() {
+        programInfoCollection.trailInfo = {
+            attribLocations: {
+                vertexPosition: gl.getAttribLocation(shaderPrograms.trailParticleProgram, "a_position"),
+                color: gl.getAttribLocation(shaderPrograms.trailParticleProgram, "a_color"),
+            },
+            uniformLocations: {
+                projectionMatrix: gl.getUniformLocation(shaderPrograms.trailParticleProgram, "u_pMatrix"),
+                modelViewMatrix: gl.getUniformLocation(shaderPrograms.trailParticleProgram, "u_mvMatrix")
+            }
+        };
+    }
+
+    async start() {
+        console.log("Начало работы");
+    }
+
+    trail(vertices, indices, colors) {
+        gl.useProgram(shaderPrograms.trailParticleProgram);
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.enableVertexAttribArray(programInfoCollection.trailInfo.attribLocations.vertexPosition);
+        gl.vertexAttribPointer(programInfoCollection.trailInfo.attribLocations.vertexPosition, 3, gl.FLOAT, false, 0, 0);
+
+        const colorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.enableVertexAttribArray(programInfoCollection.trailInfo.attribLocations.color);
+        gl.vertexAttribPointer(programInfoCollection.trailInfo.attribLocations.color, 4, gl.FLOAT, false, 0, 0);
+
+        const indexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+
+        const modelViewMatrix = mat4.create();
+        mat4.identity(modelViewMatrix);
+
+        mat4.translate(modelViewMatrix, modelViewMatrix, this.center);
+
+        mat4.scale(modelViewMatrix, modelViewMatrix, [1, 1, 1]);
+
+        const newrot = mat4.create();
+        const q = mat4.create();
+        quat.fromEuler(q, 0, 0, 0);
+        mat4.fromQuat(newrot, q);
+
+        mat4.multiply(modelViewMatrix, modelViewMatrix, newrot);
+
+        mat4.translate(modelViewMatrix, modelViewMatrix, [0, 0, 0]);
+
+        gl.uniformMatrix4fv(programInfoCollection.trailInfo.uniformLocations.projectionMatrix, false, projectionMatrix);
+        gl.uniformMatrix4fv(programInfoCollection.trailInfo.uniformLocations.modelViewMatrix, false, modelViewMatrix);
+
+        const vertexCount = indices.length;
+        const type = gl.UNSIGNED_SHORT;
+        const offset = 0;
+        gl.drawElements(gl.TRIANGLES, vertexCount, type, offset);
+
+        gl.deleteBuffer(positionBuffer);
+        gl.deleteBuffer(colorBuffer);
+        gl.deleteBuffer(indexBuffer);
+    }
+
+    tick(deltaTime) {
+        this.timeFromSpawn += deltaTime;
+
+        if (this.timeFromSpawn >= this.spawnInterval) {
+            this.timeFromSpawn = 0;
+            for (let i = 0; i < this.spawnRate; i++) {
+                if (this.particles.length < this.maxParticles) {
+                    this.particles.push(new SnowParticle(this.center, this.rotationSpeed));
+                }
+            }
+        }
+
+        this.particles.forEach(particle => {
+            particle.update(deltaTime);
+        });
+
+        this.particles = this.particles.filter(particle => particle.isAlive);
+
+        this.particles.forEach(particle => {
+            this.trail(particle.vertexes, particle.indices, particle.colors);
+        });
+    }
+}
+
+class SnowParticle {
+    constructor(center, rotationSpeed) {
+        this.isAlive = true;
+        this.duration = 0;
+        this.lifetime = 10; // Время жизни частицы в секундах
+
+        this.vertexes = [];
+        this.indices = [];
+        this.colors = [];
+
+        this.center = center;
+        this.rotationSpeed = rotationSpeed;
+        this.angle = Math.random() * 2 * Math.PI; // Случайный начальный угол
+        this.distance = Math.random() * 5 + 6; // Случайное расстояние от центра
+        this.height = Math.random() * 10; // Случайная высота падения
+        this.color = [1, 1, (Math.random() + 1) / 2, 1]; // Белый цвет для снежинок
+
+        this.position = [
+            this.center[0] + this.distance * Math.cos(this.angle),
+            this.center[1] + this.height,
+            this.center[2] + this.distance * Math.sin(this.angle)
+        ];
+        this.velocity = this.generateRandomVelocity(); // Случайное направление и скорость
+        this.originalPosition = [...this.position]; // Исходная позиция частицы
+        this.createParticleShape();
+    }
+
+    generateRandomVelocity() {
+        return [
+            -Math.random(), // Небольшой горизонтальный дрейф
+            -Math.random() * 0.5 - 0.2, // Падение вниз
+            -Math.random() // Без движения вдоль оси Z
+        ];
+    }
+
+    /*createParticleShape() {
+        const size = 0.1; // Размер частицы
+        this.vertexes = [
+            this.position[0] - size, this.position[1] - size, this.position[2],
+            this.position[0] + size, this.position[1] - size, this.position[2],
+            this.position[0] - size, this.position[1] + size, this.position[2],
+            this.position[0] + size, this.position[1] + size, this.position[2]
+        ];
+        this.indices = [
+            0, 1, 2,
+            1, 2, 3
+        ];
+
+        this.colors = [
+            ...this.color, ...this.color,
+            ...this.color, ...this.color
+        ];
+    }*/
+
+    createParticleShape() {
+        const segments = 32; // Количество сегментов окружности
+        const angleIncrement = (2 * Math.PI) / segments;
+        const size = 0.1; // Размер частицы
+
+        // Создаем вершины окружности и устанавливаем цвета
+        for (let i = 0; i < segments; i++) {
+            const angle = i * angleIncrement;
+            const x = Math.cos(angle) * size; // Используем тригонометрию для определения x-координаты
+            const y = Math.sin(angle) * size; // Используем тригонометрию для определения y-координаты
+            const z = 0; // Для круглых частиц z всегда 0 в 2D
+            this.vertexes.push(x + this.position[0], y + this.position[1], z + this.position[2]); // Добавляем вершину к массиву вершин
+            this.colors.push(...this.color); // Устанавливаем цвет
+        }
+
+        // Создаем индексы для отрисовки треугольников
+        for (let i = 1; i < segments - 1; i++) {
+            this.indices.push(0, i, i + 1);
+        }
+        this.indices.push(0, segments - 1, 1); // Замыкаем окружность
+    }
+
+    update(deltaTime) {
+        this.duration += deltaTime;
+
+        const mouseViewportPosY = !this.static ? (-1 * yMousePos * 7 / document.body.clientHeight) : 0;
+        const mouseViewportPosX = !this.static ? (1 * xMousePos * 13 / document.body.clientWidth) : 4;
+
+        const mouseEffectRadius = 2.0; // Радиус действия мыши
+        const mouseEffectStrength = 1; // Сила эффекта
+        const returnSpeed = 0.05; // Скорость возврата к исходной позиции
+
+        const dx = this.position[0] - mouseViewportPosX
+        const dy = this.position[1] - mouseViewportPosY
+        const distanceToMouse = Math.sqrt(dx * dx + dy * dy);
+
+        if (distanceToMouse < mouseEffectRadius) {
+            const effect = (mouseEffectRadius - distanceToMouse) / mouseEffectRadius * mouseEffectStrength;
+            this.position[0] += dx * effect;
+            this.position[1] += dy * effect;
+        } else {
+            // Возвращаемся к исходной позиции
+            this.position[0] = this.position[0] + (this.originalPosition[0] - this.position[0]) * returnSpeed;
+            this.position[1] = this.position[1] + (this.originalPosition[1] - this.position[1]) * returnSpeed;
+            this.position[2] = this.position[2] + (this.originalPosition[2] - this.position[2]) * returnSpeed;
+        }
+
+        if (this.duration > this.lifetime) {
+            this.isAlive = false;
+            return;
+        }
+
+        // Обновляем угол и позицию частицы на основе её скорости
+        this.angle += this.rotationSpeed * deltaTime;
+        this.position[0] = this.center[0] + this.distance * Math.cos(this.angle);
+        this.position[1] += this.velocity[1] * deltaTime;
+        this.position[2] = this.center[2] + this.distance * Math.sin(this.angle);
+
+        this.createParticleShape();
+    }
+}
+
+export { Particle1 };

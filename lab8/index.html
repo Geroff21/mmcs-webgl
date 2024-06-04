@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>WebGL Demo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"
+        integrity="sha512-zhHQR0/H5SEBL3Wn6yYSaTTZej12z0hVZKOv3TwCUXT1z5qeqGcXJLLrbERYRScEDDpYIJhPC1fk31gqR783iQ=="
+        crossorigin="anonymous" defer></script>
+    <script src="https://flyover.github.io/imgui-js/dist/imgui.umd.js"></script>
+    <script src="https://flyover.github.io/imgui-js/dist/imgui_impl.umd.js"></script>
+
+    <script>document.write('<script src="http://' + (location.host || 'localhost').split(':')[0] + ':35729/livereload.js?snipver=1"></' + 'script>')</script>
+
+    <!-- WebGl Global Variables -->
+    <script>
+        var canvas;
+        var gl;
+        var shaderPrograms = {};
+        var programInfoCollection = {};
+
+    </script>
+
+
+    <script>
+        var ambientLightColor = new ImGui.ImVector(0.1, 0.1, 0.1);
+        var diffusionLightColor = new ImGui.ImVector(0.7, 0.7, 0.7);
+        var specularLightColor = new ImGui.ImVector(1.0, 1.0, 1.0);
+        var linearAttenuation = 1.0;
+        var quadraticAttenuation = 0.0;
+        var intensivity = 0.5;
+        // var clear_color = new ImGui.ImVec4(0.45, 0.55, 0.60, 1.00);
+        var rotationX = 0;
+        var rotationY = 0;
+        var rotationZ = 0;
+
+        var digitWeight = 1.0;
+        var materialWeight = 0.0;
+        var colorWeight = 0.0;
+
+        var debug = true;
+
+        var meshes = [];
+        var particles = [];
+        var lightSources = [];
+        var loadedAssets = {};
+        var projectionMatrix;
+
+        var xMousePos;
+        var yMousePos;
+    </script>
+    <script>
+        function mouseCoordinates(event) {
+            xMousePos = event.clientX - document.body.clientWidth / 2;
+            yMousePos = event.clientY - document.body.clientHeight / 2;
+        }
+
+        document.onmousemove = mouseCoordinates;
+    </script>
+    <!-- <script src="/mmcs-webgl/main-webgl/main.js" type="module"></script> -->
+    <script src="/main-webgl/main.js" type="module"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #glcanvas1 {
+            position: absolute;
+            top: 0px;
+            right: 0px;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+    </style>
+</head>
+
+<body>
+    <div style="display: flex; justify-content: center; width: 100%; height: 100%; align-items: center; gap: 16px;">
+        <canvas id="glcanvas1" tabindex="1"></canvas>
+    </div>
+</body>
+
+</html>
